@@ -1,0 +1,9 @@
+yfinance
+pandas
+numpy
+matplotlib
+hmmlearn
+scikit-learn
+apscheduler
+pytz
+streamlit

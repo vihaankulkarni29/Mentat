@@ -1,0 +1,25 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environments
+.venv/
+venv/
+
+# Generated data/artifacts
+analysis/**
+!analysis/.gitkeep
+!analysis/pipeline/
+analysis/pipeline/**
+!analysis/pipeline/.gitkeep
+!analysis/mentat_reports/
+analysis/mentat_reports/**
+!analysis/mentat_reports/.gitkeep
+data/**
+!data/.gitkeep
+models/**
+!models/.gitkeep
+
+# OS/editor
+.DS_Store
+Thumbs.db
