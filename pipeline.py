@@ -14,6 +14,30 @@ from src.report import build_report, save_report, send_email
 from src.risk_engine import compute_beta, detect_outliers, regime_risk_metrics
 
 
+def compute_regime_persistence(regime_series: np.ndarray, current_state: int) -> dict[str, int | str]:
+    """Count consecutive days in current regime and map to maturity bucket."""
+    consecutive = 0
+    for state in reversed(regime_series.tolist()):
+        if int(state) == int(current_state):
+            consecutive += 1
+        else:
+            break
+
+    if consecutive <= 3:
+        maturity = "FRESH (0-3d)"
+    elif consecutive <= 10:
+        maturity = "ESTABLISHING (4-10d)"
+    elif consecutive <= 30:
+        maturity = "ESTABLISHED (11-30d)"
+    else:
+        maturity = "MATURE (30d+)"
+
+    return {
+        "days_in_regime": consecutive,
+        "regime_maturity": maturity,
+    }
+
+
 def run_pipeline(retrain: bool = False, tickers: list[str] | None = None) -> dict[str, dict]:
     """Run full Mentat daily pipeline for all configured tickers."""
     print("\n" + "=" * 72)
@@ -40,14 +64,23 @@ def run_pipeline(retrain: bool = False, tickers: list[str] | None = None) -> dic
 
         model_path = os.path.join(config.MODEL_DIR, f"{ticker}_hmm.pkl")
         if retrain or not os.path.exists(model_path):
-            model, scaler = train_hmm(
+            model, scaler, state_labels, model_quality = train_hmm(
                 feature_df=feat,
                 observation_cols=config.OBSERVATION_COLS,
                 n_states=config.N_STATES,
                 model_path=model_path,
             )
         else:
-            model, scaler = load_hmm(model_path)
+            model, scaler, state_labels, model_quality = load_hmm(model_path)
+
+            # Backward compatibility for older model artifacts missing labels.
+            if not state_labels:
+                state_labels = label_states(
+                    feature_df=feat,
+                    model=model,
+                    scaler=scaler,
+                    observation_cols=config.OBSERVATION_COLS,
+                )
 
         decoded = decode_regime(
             feature_df=feat,
@@ -55,12 +88,6 @@ def run_pipeline(retrain: bool = False, tickers: list[str] | None = None) -> dic
             scaler=scaler,
             observation_cols=config.OBSERVATION_COLS,
             rolling_window=config.ROLLING_WINDOW,
-        )
-        state_labels = label_states(
-            feature_df=feat,
-            model=model,
-            scaler=scaler,
-            observation_cols=config.OBSERVATION_COLS,
         )
         current_state = decoded["current_state"]
         state_probs = decoded["state_probs"]
@@ -97,6 +124,8 @@ def run_pipeline(retrain: bool = False, tickers: list[str] | None = None) -> dic
                 }
             )
 
+        persistence = compute_regime_persistence(regime_series, current_state)
+
         returns = feat["log_ret_1d"]
         risk = regime_risk_metrics(
             returns=returns,
@@ -120,9 +149,12 @@ def run_pipeline(retrain: bool = False, tickers: list[str] | None = None) -> dic
             "base_regime_label": base_regime_label,
             "regime_confidence": round(max_prob, 4),
             "state_probs": state_probs.tolist(),
+            "state_labels": {str(k): v for k, v in state_labels.items()},
             "risk": risk,
             "outliers": outliers,
             "regime_history": regime_history,
+            "persistence": persistence,
+            "model_quality": model_quality,
         }
 
     report = build_report(results)

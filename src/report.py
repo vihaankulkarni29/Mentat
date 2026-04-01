@@ -33,6 +33,8 @@ def build_report(results: dict[str, dict]) -> str:
         risk = data["risk"]
         outliers = data["outliers"]
         history = data.get("regime_history", [])
+        persistence = data.get("persistence", {})
+        model_quality = data.get("model_quality")
         regime_tag = REGIME_EMOJI.get(regime, "NEUTRAL")
 
         lines.append("-" * 56)
@@ -44,6 +46,24 @@ def build_report(results: dict[str, dict]) -> str:
             f"Risk snapshot -> VaR95: {risk['regime_var_95']:.2%}, "
             f"CVaR95: {risk['regime_cvar_95']:.2%}, Sharpe: {risk['regime_sharpe']}, Beta: {risk['beta']}"
         )
+        lines.append("Risk explained: " + _explain_var(risk["regime_var_95"]))
+        lines.append("               " + _explain_sharpe(float(risk["regime_sharpe"])))
+        lines.append("               " + _explain_beta(float(risk["beta"])))
+
+        if persistence:
+            lines.append(
+                "Regime persistence: "
+                f"{persistence.get('days_in_regime', 0)} day(s) in current state, "
+                f"{persistence.get('regime_maturity', 'UNKNOWN')}"
+            )
+
+        if model_quality:
+            lines.append(
+                "Model quality: "
+                f"LL={model_quality.get('log_likelihood')}, "
+                f"states_used={model_quality.get('states_used')}, "
+                f"min_persistence={model_quality.get('min_persistence')}"
+            )
 
         if outliers:
             lines.append("Alerts: " + json.dumps(outliers))
@@ -75,6 +95,29 @@ def _action_hint_from_regime(regime: str) -> str:
     if regime == "MEAN-REVERTING":
         return "Counter-trend setups can work, but require disciplined stops."
     return "No clear edge detected today."
+
+
+def _explain_var(var_val: float) -> str:
+    pct = abs(var_val) * 100
+    return f"On a bad day (5% tail), this stock could fall about {pct:.1f}%."
+
+
+def _explain_beta(beta: float) -> str:
+    if beta < 0.8:
+        return f"Beta {beta:.2f}: moves less than market; relatively defensive."
+    if beta < 1.2:
+        return f"Beta {beta:.2f}: moves roughly in line with market."
+    return f"Beta {beta:.2f}: amplifies market moves; higher directional risk."
+
+
+def _explain_sharpe(sharpe: float) -> str:
+    if sharpe < 0:
+        return f"Sharpe {sharpe:.2f}: return has not compensated risk."
+    if sharpe < 0.5:
+        return f"Sharpe {sharpe:.2f}: weak risk-adjusted return."
+    if sharpe < 1.0:
+        return f"Sharpe {sharpe:.2f}: acceptable risk-adjusted return."
+    return f"Sharpe {sharpe:.2f}: strong risk-adjusted return."
 
 
 def save_report(report_text: str) -> str:

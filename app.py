@@ -6,6 +6,7 @@ import random
 from typing import Dict
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 import pipeline
@@ -132,6 +133,39 @@ def render_sidebar() -> tuple[list[str], bool]:
     return selected, retrain
 
 
+def render_confidence_bars(state_probs: list[float], state_labels: Dict[str, str]) -> None:
+    labels = [state_labels.get(str(i), f"S{i}") for i in range(len(state_probs))]
+    colors = {
+        "LOW-VOL TRENDING": "#6bbf8f",
+        "MEAN-REVERTING": "#d2b48c",
+        "HIGH-VOL RANGING": "#e09f3e",
+        "CRASH/CRISIS": "#d95d39",
+        "UNCERTAIN / TRANSITION": "#c08c5a",
+    }
+    bar_colors = [colors.get(label, "#a0937d") for label in labels]
+
+    fig = go.Figure(
+        go.Bar(
+            x=labels,
+            y=[round(p * 100, 1) for p in state_probs],
+            marker_color=bar_colors,
+            text=[f"{p:.0%}" for p in state_probs],
+            textposition="outside",
+        )
+    )
+    fig.update_layout(
+        yaxis_title="Posterior probability (%)",
+        yaxis_range=[0, 110],
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font_color="#d2b48c",
+        margin=dict(t=20, b=20, l=20, r=20),
+        showlegend=False,
+        height=260,
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
 def render_ticker_card(ticker: str, payload: Dict) -> None:
     regime = payload["regime_label"]
     base_regime = payload.get("base_regime_label", regime)
@@ -139,6 +173,10 @@ def render_ticker_card(ticker: str, payload: Dict) -> None:
     risk = payload["risk"]
     outliers = payload.get("outliers", {})
     history = payload.get("regime_history", [])
+    persistence = payload.get("persistence", {})
+    model_quality = payload.get("model_quality")
+    state_probs = payload.get("state_probs", [])
+    state_labels = payload.get("state_labels", {})
 
     tag_color = _regime_color(regime)
 
@@ -161,6 +199,24 @@ def render_ticker_card(ticker: str, payload: Dict) -> None:
         f'<div class="mentat-quote">Mentat says: {_say(regime)}</div>',
         unsafe_allow_html=True,
     )
+
+    if state_probs:
+        st.markdown('<div class="mentat-sub">Regime confidence map</div>', unsafe_allow_html=True)
+        render_confidence_bars(state_probs, state_labels)
+
+    if persistence:
+        st.info(
+            f"Regime persistence: {persistence.get('days_in_regime', 0)} day(s) | "
+            f"{persistence.get('regime_maturity', 'UNKNOWN')}"
+        )
+
+    if model_quality:
+        st.caption(
+            "Model quality "
+            f"(LL={model_quality.get('log_likelihood')}, "
+            f"states={model_quality.get('states_used')}, "
+            f"min_persistence={model_quality.get('min_persistence')})"
+        )
 
     if outliers:
         st.warning(f"Outlier alerts: {outliers}")

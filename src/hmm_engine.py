@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import pickle
+import warnings
 from typing import TypedDict
 
 import numpy as np
@@ -21,12 +22,18 @@ class DecodedRegime(TypedDict):
     window_index: pd.Index
 
 
+class ModelQuality(TypedDict):
+    log_likelihood: float
+    states_used: int
+    min_persistence: float
+
+
 def train_hmm(
     feature_df: pd.DataFrame,
     observation_cols: list[str],
     n_states: int,
     model_path: str,
-) -> tuple[GaussianHMM, StandardScaler]:
+) -> tuple[GaussianHMM, StandardScaler, dict[int, str], ModelQuality]:
     """Train Gaussian HMM and persist model + scaler."""
     X = feature_df[observation_cols].values
     scaler = StandardScaler()
@@ -41,18 +48,57 @@ def train_hmm(
     )
     model.fit(X_scaled)
 
+    quality = _model_quality_check(model, X_scaled, n_states)
+    labels = label_states(feature_df, model, scaler, observation_cols)
+
     os.makedirs(os.path.dirname(model_path), exist_ok=True)
     with open(model_path, "wb") as f:
-        pickle.dump({"model": model, "scaler": scaler}, f)
+        pickle.dump(
+            {
+                "model": model,
+                "scaler": scaler,
+                "state_labels": labels,
+                "model_quality": quality,
+            },
+            f,
+        )
 
-    return model, scaler
+    return model, scaler, labels, quality
 
 
-def load_hmm(model_path: str) -> tuple[GaussianHMM, StandardScaler]:
-    """Load persisted HMM and scaler."""
+def load_hmm(model_path: str) -> tuple[GaussianHMM, StandardScaler, dict[int, str], ModelQuality | None]:
+    """Load persisted HMM, scaler, and optional label/quality metadata."""
     with open(model_path, "rb") as f:
         obj = pickle.load(f)
-    return obj["model"], obj["scaler"]
+    labels = obj.get("state_labels", {})
+    quality = obj.get("model_quality")
+    return obj["model"], obj["scaler"], labels, quality
+
+
+def _model_quality_check(model: GaussianHMM, X_scaled: np.ndarray, n_states: int) -> ModelQuality:
+    """Sanity-check HMM fit quality before model is trusted."""
+    states = model.predict(X_scaled)
+    unique_states = len(set(states.tolist()))
+
+    if unique_states < n_states:
+        raise ValueError(
+            f"HMM only used {unique_states}/{n_states} states. "
+            "Try reducing N_STATES or increasing LOOKBACK_YEARS."
+        )
+
+    min_persistence = float(model.transmat_.diagonal().min())
+    if min_persistence < 0.5:
+        warnings.warn(
+            f"Lowest state persistence is {min_persistence:.2f}. "
+            "Some regimes may be noise. Consider N_STATES=3.",
+            stacklevel=2,
+        )
+
+    return {
+        "log_likelihood": round(float(model.score(X_scaled)), 2),
+        "states_used": unique_states,
+        "min_persistence": round(min_persistence, 3),
+    }
 
 
 def decode_regime(
