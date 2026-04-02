@@ -254,14 +254,32 @@ def parse_args() -> argparse.Namespace:
         default="",
         help="Optional comma-separated tickers override (e.g., RELIANCE.NS,TCS.NS)",
     )
+    parser.add_argument(
+        "--scan",
+        action="store_true",
+        help="Run Phase 2.1 NSE universe scan",
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    selected_tickers = [t.strip().upper() for t in args.tickers.split(",") if t.strip()] or None
     os.makedirs(config.MODEL_DIR, exist_ok=True)
     os.makedirs(config.OUTPUT_DIR, exist_ok=True)
     os.makedirs(config.REPORT_DIR, exist_ok=True)
     os.makedirs(config.VALIDATION_DIR, exist_ok=True)
-    run_pipeline(retrain=args.retrain, tickers=selected_tickers, validate=args.validate)
+
+    if args.scan:
+        from src.universe import run_universe_scan, build_sector_regime_map, save_universe_scan
+        scan_df   = run_universe_scan()
+        sector_df = build_sector_regime_map(scan_df)
+
+        print("\n=== SECTOR REGIME MAP ===")
+        print(sector_df.to_string(index=False))
+        print("\n=== UNIVERSE SCAN ===")
+        print(scan_df.to_string(index=False))
+
+        save_universe_scan(scan_df, sector_df)
+    else:
+        selected_tickers = [t.strip().upper() for t in args.tickers.split(",") if t.strip()] or None
+        run_pipeline(retrain=args.retrain, tickers=selected_tickers, validate=args.validate)

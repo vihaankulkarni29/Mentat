@@ -170,10 +170,14 @@ def label_states(
     scaler: StandardScaler,
     observation_cols: list[str],
 ) -> dict[int, str]:
-    """Phase 1.1 labeling by multi-metric signature instead of return-only sorting."""
+    """
+    Phase 1.1 labeling by multi-metric signature — handles 3 OR 4 states.
+    With N_STATES=3: Crisis, Ranging, Trending (core decision triplet).
+    With N_STATES=4: Crisis, Trending, Ranging, MeanReverting (original).
+    """
     profiles = _state_profiles(feature_df, model, scaler, observation_cols)
     states = list(profiles.keys())
-    if len(states) < 4:
+    if len(states) < 3:
         return {state: f"REGIME_{i}" for i, state in enumerate(states)}
 
     labels: dict[int, str] = {}
@@ -181,10 +185,14 @@ def label_states(
     # 1) Crash/Crisis: worst average returns.
     crash_state = min(states, key=lambda s: profiles[s]["mean_ret"])
     labels[crash_state] = "CRASH/CRISIS"
-
     remaining = [s for s in states if s != crash_state]
 
-    # 2) Low-vol trending: good returns, lower vol, RSI bias above neutral.
+    if len(remaining) == 1:
+        # Two-state model: all others are RANGING
+        labels[remaining[0]] = "HIGH-VOL RANGING"
+        return labels
+
+    # 2) Low-vol trending: best risk-adjusted return
     trending_state = max(
         remaining,
         key=lambda s: (
@@ -194,8 +202,12 @@ def label_states(
         ),
     )
     labels[trending_state] = "LOW-VOL TRENDING"
-
     remaining = [s for s in remaining if s != trending_state]
+
+    if len(remaining) == 1:
+        # Three states: last one is RANGING
+        labels[remaining[0]] = "HIGH-VOL RANGING"
+        return labels
 
     # 3) High-vol ranging: high vol with low directional drift.
     ranging_state = max(
@@ -203,10 +215,9 @@ def label_states(
         key=lambda s: profiles[s]["vol"] - 2.0 * profiles[s]["abs_mean_ret"],
     )
     labels[ranging_state] = "HIGH-VOL RANGING"
-
     remaining = [s for s in remaining if s != ranging_state]
 
-    # 4) Mean-reverting: residual state, usually with weaker trend persistence.
+    # 4) Mean-reverting: residual state (only with 4+ states)
     for state in remaining:
         labels[state] = "MEAN-REVERTING"
 
