@@ -125,12 +125,18 @@ def render_header() -> None:
     )
 
 
-def render_sidebar() -> tuple[list[str], bool]:
+def render_sidebar() -> tuple[list[str], bool, bool]:
     st.sidebar.header("Mission Controls")
     selected = st.sidebar.multiselect("Tickers", options=config.TICKERS, default=config.TICKERS)
     retrain = st.sidebar.checkbox("Retrain HMM models", value=False)
+    validate = st.sidebar.checkbox("Run Phase 1.2 validation", value=False)
     st.sidebar.caption("Tip: Retrain weekly, infer daily.")
-    return selected, retrain
+    return selected, retrain, validate
+
+
+@st.cache_data(ttl=3600)
+def cached_pipeline(retrain: bool, tickers_tuple: tuple[str, ...], validate: bool) -> Dict:
+    return pipeline.run_pipeline(retrain=retrain, tickers=list(tickers_tuple), validate=validate)
 
 
 def render_confidence_bars(state_probs: list[float], state_labels: Dict[str, str]) -> None:
@@ -235,7 +241,7 @@ def render_ticker_card(ticker: str, payload: Dict) -> None:
 
 def main() -> None:
     render_header()
-    selected_tickers, retrain = render_sidebar()
+    selected_tickers, retrain, validate = render_sidebar()
 
     if not selected_tickers:
         st.info("Choose at least one ticker from the sidebar.")
@@ -243,7 +249,11 @@ def main() -> None:
 
     if st.button("Run Mentat Analysis", type="primary"):
         with st.spinner("Mentat is computing regimes, risk, and transitions..."):
-            results = pipeline.run_pipeline(retrain=retrain, tickers=selected_tickers)
+            if retrain or validate:
+                # Do not cache retraining operations.
+                results = pipeline.run_pipeline(retrain=True, tickers=selected_tickers, validate=validate)
+            else:
+                results = cached_pipeline(False, tuple(selected_tickers), validate)
 
         st.subheader("Daily Decision Surface")
         for ticker in selected_tickers:

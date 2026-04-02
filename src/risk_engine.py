@@ -49,20 +49,36 @@ def compute_beta(stock_returns: pd.Series, market_returns: pd.Series) -> float:
 
 
 def detect_outliers(feature_df: pd.DataFrame, z_threshold: float) -> dict:
-    """Z-score outlier flags for key features."""
+    """Outlier flags using full-history and recent (20d) context."""
     if feature_df.empty:
         return {}
 
     today = feature_df.iloc[-1]
-    flags: dict[str, dict[str, float]] = {}
+    flags: dict[str, dict[str, float | str]] = {}
 
     for col in ["log_ret_1d", "vol_zscore", "rvol_10d"]:
+        # Full-history context
         series = feature_df[col].dropna()
         if len(series) < 20 or series.std() == 0:
             continue
         z = (today[col] - series.mean()) / series.std()
         if abs(z) > z_threshold:
-            flags[col] = {"z_score": round(float(z), 2), "value": round(float(today[col]), 4)}
+            flags[col] = {
+                "z_score": round(float(z), 2),
+                "value": round(float(today[col]), 4),
+                "context": "vs full history",
+            }
+
+        # Recent rolling context
+        recent = feature_df[col].tail(20).dropna()
+        if len(recent) > 5 and recent.std() > 0:
+            z_recent = (today[col] - recent.mean()) / recent.std()
+            if abs(z_recent) > z_threshold:
+                flags[f"{col}_recent"] = {
+                    "z_score": round(float(z_recent), 2),
+                    "value": round(float(today[col]), 4),
+                    "context": "vs 20d rolling",
+                }
 
     return flags
 

@@ -6,8 +6,10 @@ import argparse
 import os
 
 import numpy as np
+import pandas as pd
 
 from src import config
+from src.backtest import bic_model_selection, regime_return_heatmap, walk_forward_backtest
 from src.data_ingestion import build_feature_matrix, fetch_market_returns, fetch_stock_data, fetch_vix
 from src.hmm_engine import decode_regime, label_states, load_hmm, train_hmm
 from src.report import build_report, save_report, send_email
@@ -38,7 +40,11 @@ def compute_regime_persistence(regime_series: np.ndarray, current_state: int) ->
     }
 
 
-def run_pipeline(retrain: bool = False, tickers: list[str] | None = None) -> dict[str, dict]:
+def run_pipeline(
+    retrain: bool = False,
+    tickers: list[str] | None = None,
+    validate: bool = False,
+) -> dict[str, dict]:
     """Run full Mentat daily pipeline for all configured tickers."""
     print("\n" + "=" * 72)
     print("MENTAT PHASE 1 - HMM REGIME PIPELINE")
@@ -62,16 +68,32 @@ def run_pipeline(retrain: bool = False, tickers: list[str] | None = None) -> dic
             print(f"[WARN] Feature matrix empty for {ticker}, skipping")
             continue
 
+        # Phase 1.2 validation is intentionally run on a shorter recent window to keep feedback fast.
+        validation_feat = feat.tail(max(config.WF_TRAIN_SIZE + config.WF_TEST_SIZE * 3, 756)) if validate else feat
+
         model_path = os.path.join(config.MODEL_DIR, f"{ticker}_hmm.pkl")
         if retrain or not os.path.exists(model_path):
             model, scaler, state_labels, model_quality = train_hmm(
-                feature_df=feat,
+                feature_df=validation_feat,
                 observation_cols=config.OBSERVATION_COLS,
                 n_states=config.N_STATES,
                 model_path=model_path,
             )
         else:
             model, scaler, state_labels, model_quality = load_hmm(model_path)
+            expected_features = len(config.OBSERVATION_COLS)
+            actual_features = getattr(scaler, "n_features_in_", expected_features)
+            if actual_features != expected_features:
+                print(
+                    f"[WARN] Model feature count mismatch for {ticker}: "
+                    f"artifact expects {actual_features}, current pipeline uses {expected_features}. Retraining."
+                )
+                model, scaler, state_labels, model_quality = train_hmm(
+                    feature_df=validation_feat,
+                    observation_cols=config.OBSERVATION_COLS,
+                    n_states=config.N_STATES,
+                    model_path=model_path,
+                )
 
             # Backward compatibility for older model artifacts missing labels.
             if not state_labels:
@@ -83,7 +105,7 @@ def run_pipeline(retrain: bool = False, tickers: list[str] | None = None) -> dic
                 )
 
         decoded = decode_regime(
-            feature_df=feat,
+            feature_df=validation_feat,
             model=model,
             scaler=scaler,
             observation_cols=config.OBSERVATION_COLS,
@@ -126,7 +148,7 @@ def run_pipeline(retrain: bool = False, tickers: list[str] | None = None) -> dic
 
         persistence = compute_regime_persistence(regime_series, current_state)
 
-        returns = feat["log_ret_1d"]
+        returns = validation_feat["log_ret_1d"]
         risk = regime_risk_metrics(
             returns=returns,
             regime_series=regime_series,
@@ -142,7 +164,51 @@ def run_pipeline(retrain: bool = False, tickers: list[str] | None = None) -> dic
         if trans_away > 0.3:
             outliers["regime_shift_risk"] = {"prob_leaving_state": round(float(trans_away), 2)}
 
-        feat.to_csv(os.path.join(config.OUTPUT_DIR, f"{ticker}_feature_matrix.csv"))
+        validation_feat.to_csv(os.path.join(config.OUTPUT_DIR, f"{ticker}_feature_matrix.csv"))
+
+        validation_summary = None
+        if validate:
+            os.makedirs(config.VALIDATION_DIR, exist_ok=True)
+
+            bic = bic_model_selection(
+                feature_df=validation_feat,
+                observation_cols=config.OBSERVATION_COLS,
+                n_states_range=(config.BIC_STATE_MIN, config.BIC_STATE_MAX),
+            )
+            bt_df = walk_forward_backtest(
+                feature_df=validation_feat,
+                observation_cols=config.OBSERVATION_COLS,
+                n_states=config.N_STATES,
+                train_size=config.WF_TRAIN_SIZE,
+                test_size=config.WF_TEST_SIZE,
+            )
+            heatmap = regime_return_heatmap(bt_df)
+
+            pd.Series(bic, name="bic").to_csv(
+                os.path.join(config.VALIDATION_DIR, f"{ticker}_bic_scores.csv"), header=True
+            )
+            bt_df.to_csv(os.path.join(config.VALIDATION_DIR, f"{ticker}_walk_forward.csv"), index=False)
+            heatmap.to_csv(os.path.join(config.VALIDATION_DIR, f"{ticker}_regime_heatmap.csv"))
+
+            if not heatmap.empty:
+                best_state = heatmap.index[0]
+                bic_min_state = min(bic.items(), key=lambda item: item[1])[0]
+                validation_summary = {
+                    "best_regime": str(best_state),
+                    "best_mean_ret": float(heatmap.iloc[0]["mean_ret"]),
+                    "best_hit_rate": float(heatmap.iloc[0]["hit_rate"]),
+                    "bic_min_state": int(bic_min_state),
+                    "bic_scores": bic,
+                }
+            else:
+                bic_min_state = min(bic.items(), key=lambda item: item[1])[0]
+                validation_summary = {
+                    "best_regime": "N/A",
+                    "best_mean_ret": 0.0,
+                    "best_hit_rate": 0.0,
+                    "bic_min_state": int(bic_min_state),
+                    "bic_scores": bic,
+                }
 
         results[ticker] = {
             "regime_label": regime_label,
@@ -155,6 +221,7 @@ def run_pipeline(retrain: bool = False, tickers: list[str] | None = None) -> dic
             "regime_history": regime_history,
             "persistence": persistence,
             "model_quality": model_quality,
+            "validation": validation_summary,
         }
 
     report = build_report(results)
@@ -177,12 +244,24 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Retrain HMM models before decoding today's regime",
     )
+    parser.add_argument(
+        "--validate",
+        action="store_true",
+        help="Run Phase 1.2 validation (walk-forward, regime heatmap, BIC) and save outputs",
+    )
+    parser.add_argument(
+        "--tickers",
+        default="",
+        help="Optional comma-separated tickers override (e.g., RELIANCE.NS,TCS.NS)",
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
+    selected_tickers = [t.strip().upper() for t in args.tickers.split(",") if t.strip()] or None
     os.makedirs(config.MODEL_DIR, exist_ok=True)
     os.makedirs(config.OUTPUT_DIR, exist_ok=True)
     os.makedirs(config.REPORT_DIR, exist_ok=True)
-    run_pipeline(retrain=args.retrain)
+    os.makedirs(config.VALIDATION_DIR, exist_ok=True)
+    run_pipeline(retrain=args.retrain, tickers=selected_tickers, validate=args.validate)

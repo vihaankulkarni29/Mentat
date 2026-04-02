@@ -10,7 +10,14 @@ UNCERTAIN_CONFIDENCE_THRESHOLD = 0.55
 HISTORY_DAYS = 5
 
 # Observation features used by HMM (Layer 2 -> Layer 3)
-OBSERVATION_COLS = ["log_ret_1d", "rvol_10d", "rsi", "vol_zscore"]
+OBSERVATION_COLS = ["log_ret_1d", "rvol_10d", "rsi", "vol_zscore", "vix"]
+
+# Phase 1.2 validation settings
+WF_TRAIN_SIZE = 504
+WF_TEST_SIZE = 21
+BIC_STATE_MIN = 2
+BIC_STATE_MAX = 6
+VALIDATION_DIR = "./analysis/validation"
 
 # Directories
 MODEL_DIR = "./models"

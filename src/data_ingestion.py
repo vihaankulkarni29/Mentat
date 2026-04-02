@@ -10,7 +10,7 @@ import yfinance as yf  # type: ignore[import-not-found]
 def fetch_stock_data(ticker: str, lookback_years: int = 3) -> pd.DataFrame:
     """Fetch adjusted OHLCV data for a ticker."""
     period = f"{lookback_years}y"
-    df = yf.download(ticker, period=period, auto_adjust=True, progress=False)
+    df = yf.download(ticker, period=period, auto_adjust=True, progress=False, timeout=15)
     if df is None or df.empty:
         return pd.DataFrame()
 
@@ -24,7 +24,7 @@ def fetch_stock_data(ticker: str, lookback_years: int = 3) -> pd.DataFrame:
 def fetch_vix(lookback_years: int = 3) -> pd.Series:
     """Fetch VIX as macro volatility proxy."""
     period = f"{lookback_years}y"
-    vix = yf.download("^VIX", period=period, auto_adjust=True, progress=False)
+    vix = yf.download("^VIX", period=period, auto_adjust=True, progress=False, timeout=15)
     if vix is None or vix.empty:
         return pd.Series(dtype=float, name="VIX")
 
@@ -37,7 +37,7 @@ def fetch_vix(lookback_years: int = 3) -> pd.Series:
 def fetch_market_returns(benchmark_ticker: str, lookback_years: int = 3) -> pd.Series:
     """Fetch benchmark returns for beta calculation."""
     period = f"{lookback_years}y"
-    idx = yf.download(benchmark_ticker, period=period, auto_adjust=True, progress=False)
+    idx = yf.download(benchmark_ticker, period=period, auto_adjust=True, progress=False, timeout=15)
     if idx is None or idx.empty:
         return pd.Series(dtype=float, name="market_return")
 
