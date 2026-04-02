@@ -8,9 +8,19 @@ from pipeline import run_pipeline
 scheduler = BlockingScheduler(timezone=pytz.timezone("Asia/Kolkata"))
 
 
+@scheduler.scheduled_job("cron", day_of_week="mon-fri", hour=22, minute=30)
+def overnight_intelligence() -> None:
+    """Phase 3: Overnight news collection and intelligence analysis."""
+    print("Running overnight intelligence collection...")
+    from src import config
+    from src.intelligence import run_intelligence_layer
+    sentiment_data = run_intelligence_layer(config.TICKERS)
+    print(f"[INTEL] Overnight collection complete: {len(sentiment_data['signals'])} signals")
+
+
 @scheduler.scheduled_job("cron", day_of_week="mon-fri", hour=9, minute=30)
 def daily_job() -> None:
-    print("Running daily Mentat pipeline...")
+    print("Running daily Mentat pipeline with morning brief...")
     run_pipeline(retrain=False)
 
 

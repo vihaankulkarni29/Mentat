@@ -10,8 +10,10 @@ import pandas as pd
 
 from src import config
 from src.backtest import bic_model_selection, regime_return_heatmap, walk_forward_backtest
+from src.brief import build_morning_brief
 from src.data_ingestion import build_feature_matrix, fetch_market_returns, fetch_stock_data, fetch_vix
 from src.hmm_engine import decode_regime, label_states, load_hmm, train_hmm
+from src.intelligence import run_intelligence_layer
 from src.report import build_report, save_report, send_email
 from src.risk_engine import compute_beta, detect_outliers, regime_risk_metrics
 
@@ -228,6 +230,22 @@ def run_pipeline(
     print("\n" + report)
     report_path = save_report(report)
     print(f"\n[OK] Report saved: {report_path}")
+
+    # Phase 3: Intelligence layer (news sentiment)
+    print("\n[INTEL] Running news sentiment analysis...")
+    sentiment_data = run_intelligence_layer(effective_tickers)
+
+    # Build morning brief combining regime + outliers + sentiment
+    morning_brief = build_morning_brief(results, sentiment_data)
+    print("\n" + morning_brief)
+
+    # Save morning brief
+    os.makedirs(config.REPORT_DIR, exist_ok=True)
+    today = pd.Timestamp.now().date().isoformat()
+    brief_path = os.path.join(config.REPORT_DIR, f"mentat_brief_{today}.txt")
+    with open(brief_path, "w") as f:
+        f.write(morning_brief)
+    print(f"\n[OK] Morning brief saved: {brief_path}")
 
     if config.SEND_EMAIL:
         send_email(report)
