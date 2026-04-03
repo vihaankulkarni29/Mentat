@@ -222,3 +222,20 @@ def label_states(
         labels[state] = "MEAN-REVERTING"
 
     return labels
+
+
+def passes_sniper_gate(
+    regime_label: str,
+    rsi: float,
+    hurst: float,
+    rsi_min: float = 40.0,
+    rsi_max: float = 65.0,
+    hurst_min: float = 0.55,
+) -> bool:
+    """Unified entry gate for trending persistence setups."""
+    if regime_label != "LOW-VOL TRENDING":
+        return False
+    if not np.isfinite(rsi):
+        return False
+    # Golden Master: do not hard-gate by Hurst; keep Hurst as model feature only.
+    return rsi_min <= float(rsi) <= rsi_max

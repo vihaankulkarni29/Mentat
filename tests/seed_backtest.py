@@ -33,7 +33,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src import config
 from src.data_ingestion import build_feature_matrix
-from src.hmm_engine import train_hmm
+from src.hmm_engine import passes_sniper_gate, train_hmm
 
 
 @dataclass
@@ -128,6 +128,7 @@ def run_seed_backtest(
     rsi_min: float,
     rsi_max: float,
     retrain_days: int,
+    hurst_min: float,
 ) -> dict[str, Any]:
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(config.MODEL_DIR, exist_ok=True)
@@ -143,6 +144,7 @@ def run_seed_backtest(
     print(f"Test:  {test_start} -> {test_end}")
     print(f"Universe size: {len(tickers)}")
     print(f"Entry RSI band: {rsi_min} -> {rsi_max}")
+    print("Hurst gate: disabled (feature-only input)")
     print("Volume filter: current volume > 5-day average volume")
     print(f"Walk-forward retraining cadence: every {retrain_days} trading days")
 
@@ -172,7 +174,7 @@ def run_seed_backtest(
             continue
 
         # Use momentum + volatility + RSI + volume pressure.
-        obs_cols = ["log_ret_1d", "log_ret_20d", "rvol_20d", "rsi", "vol_zscore"]
+        obs_cols = ["log_ret_1d", "log_ret_20d", "rvol_20d", "rsi", "vol_zscore", "hurst_30d"]
         if any(col not in feat.columns for col in obs_cols):
             print("  [WARN] required features unavailable")
             continue
@@ -247,16 +249,20 @@ def run_seed_backtest(
                 continue
 
             if not in_position:
-                # In 3-state fallback, use HIGH-VOL RANGING as the mean-reversion proxy.
-                mr_proxy = "MEAN-REVERTING" if n_used >= 4 else "HIGH-VOL RANGING"
-                shifted = regime_prev == mr_proxy and regime_today == "LOW-VOL TRENDING"
-                rsi_gate = rsi_min <= float(row_today["rsi"]) <= rsi_max
+                sniper_gate = passes_sniper_gate(
+                    regime_label=regime_today,
+                    rsi=float(row_today["rsi"]),
+                    hurst=float(row_today["hurst_30d"]),
+                    rsi_min=rsi_min,
+                    rsi_max=rsi_max,
+                    hurst_min=hurst_min,
+                )
 
                 vol_now = float(pd.to_numeric(ohlcv.loc[day, "Volume"], errors="coerce"))
                 vol_5dma = float(pd.to_numeric(ohlcv["Volume"].rolling(5).mean().loc[day], errors="coerce"))
                 vol_gate = np.isfinite(vol_now) and np.isfinite(vol_5dma) and vol_5dma > 0 and vol_now > vol_5dma
 
-                if shifted and rsi_gate and vol_gate:
+                if sniper_gate and vol_gate:
                     in_position = True
                     entry_price = close_today
                     entry_date = day
@@ -325,6 +331,8 @@ def run_seed_backtest(
         "test_window": f"{test_start} -> {test_end}",
         "universe_n": len(tickers),
         "rsi_band": f"{rsi_min}-{rsi_max}",
+        "hurst_min": hurst_min,
+        "hurst_gate_active": False,
         "retrain_days": retrain_days,
         "trades": int(len(trades_df)),
         "strategy_total_return": round(strategy_total, 4),
@@ -360,6 +368,7 @@ def run_seed_backtest(
         f"Test:                 {summary['test_window']}",
         f"Universe size:        {summary['universe_n']}",
         f"RSI band:             {summary['rsi_band']}",
+        "Hurst gate:           disabled (feature-only input)",
         f"Retrain cadence:      {summary['retrain_days']} trading days",
         "Volume gate:          current volume > 5-day average volume",
         f"Trades:               {summary['trades']}",
@@ -399,6 +408,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--test-end", default="2024-12-31")
     parser.add_argument("--rsi-min", type=float, default=40.0)
     parser.add_argument("--rsi-max", type=float, default=65.0)
+    parser.add_argument("--hurst-min", type=float, default=0.55)
     parser.add_argument("--retrain-days", type=int, default=5, help="Walk-forward retrain frequency in trading days")
     parser.add_argument("--output-dir", default="analysis/validation")
     return parser.parse_args()
@@ -422,6 +432,7 @@ def main() -> None:
         output_dir=args.output_dir,
         rsi_min=float(args.rsi_min),
         rsi_max=float(args.rsi_max),
+        hurst_min=float(args.hurst_min),
         retrain_days=max(1, int(args.retrain_days)),
     )
 

@@ -10,3 +10,4 @@ plotly>=5.22.0
 pytz>=2024.1
 httpx>=0.27.0
 beautifulsoup4>=4.12.0
+hurst>=0.0.5

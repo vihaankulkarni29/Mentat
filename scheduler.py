@@ -24,6 +24,16 @@ def daily_job() -> None:
     run_pipeline(retrain=False)
 
 
+@scheduler.scheduled_job("cron", day_of_week="mon-fri", hour=15, minute=15)
+def afternoon_seed_scan() -> None:
+    """3:15 PM seed-universe scan for next-session setup discovery."""
+    print("Running 3:15 PM Mentat seed scan for setup radar...")
+    from src import config
+    excluded = set(config.MENTAT_EXCLUDED)
+    tickers = [t for t in config.MENTAT_SEED_UNIVERSE if t not in excluded]
+    run_pipeline(retrain=False, tickers=tickers)
+
+
 @scheduler.scheduled_job("cron", day_of_week="sun", hour=8, minute=0)
 def weekly_retrain() -> None:
     print("Retraining Mentat HMM models...")

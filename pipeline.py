@@ -277,6 +277,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Run Phase 2.1 NSE universe scan",
     )
+    parser.add_argument(
+        "--seed-scan",
+        action="store_true",
+        help="Run pipeline on Mentat seed universe (excludes saturated names)",
+    )
     return parser.parse_args()
 
 
@@ -299,5 +304,9 @@ if __name__ == "__main__":
 
         save_universe_scan(scan_df, sector_df)
     else:
-        selected_tickers = [t.strip().upper() for t in args.tickers.split(",") if t.strip()] or None
+        if args.seed_scan:
+            excluded = set(config.MENTAT_EXCLUDED)
+            selected_tickers = [t for t in config.MENTAT_SEED_UNIVERSE if t not in excluded]
+        else:
+            selected_tickers = [t.strip().upper() for t in args.tickers.split(",") if t.strip()] or None
         run_pipeline(retrain=args.retrain, tickers=selected_tickers, validate=args.validate)
