@@ -77,6 +77,7 @@ def build_morning_brief(
         conf = data.get("regime_confidence", 0.5)
         persist = data.get("persistence", {}).get("days_in_regime", 0)
         outliers = data.get("outliers", {})
+        outlier_meta = outliers.get("outlier_meta", {}) if isinstance(outliers, dict) else {}
         risk = data.get("risk", {})
 
         # Base score from regime
@@ -88,8 +89,11 @@ def build_morning_brief(
             "UNCERTAIN": -1,
         }.get(regime, 0)
 
-        # Outlier signal boost
-        outlier_boost = min(len(outliers), 2)
+        # Outlier signal boost: prefer composite score over raw flag count.
+        if outlier_meta:
+            outlier_boost = min(float(outlier_meta.get("score", 0.0)) / 2.5, 3.0)
+        else:
+            outlier_boost = min(len([k for k in outliers.keys() if k != "outlier_meta"]), 2)
 
         # Sentiment boost from news
         sentiment_signals = sentiment_data.get("by_ticker", {}).get(ticker, [])
@@ -151,9 +155,17 @@ def build_morning_brief(
             ]
             if stock["outliers"]:
                 flag_keys = [
-                    k for k in stock["outliers"] if not k.endswith("_recent")
+                    k for k in stock["outliers"] if not k.endswith("_recent") and k != "outlier_meta"
                 ][:2]
-                lines.append(f"     Outlier flags: {', '.join(flag_keys)}")
+                meta = stock["outliers"].get("outlier_meta", {})
+                if meta:
+                    lines.append(
+                        "     Outlier engine: "
+                        f"{meta.get('severity', 'N/A')} ({meta.get('bias', 'N/A')}), "
+                        f"score={meta.get('score', 0)}"
+                    )
+                if flag_keys:
+                    lines.append(f"     Outlier flags: {', '.join(flag_keys)}")
             if stock["sentiment"]:
                 for sig in stock["sentiment"][:2]:
                     lines.append(

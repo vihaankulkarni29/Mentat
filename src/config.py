@@ -1,6 +1,40 @@
 """Mentat Phase 1 configuration."""
 
+# Stage 2 default universe for day-to-day runs.
 TICKERS = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS"]
+
+# Stage 1/Backtest seed universe focused on information-asymmetry pockets.
+# Intentional bias: defense, railways, renewables, specialty chemicals,
+# healthcare, electronics manufacturing, and mid-cap IT.
+MENTAT_SEED_UNIVERSE = [
+	# Defense / Aerospace
+	"HAL.NS", "BEL.NS", "BDL.NS", "MAZDOCK.NS", "COCHINSHIP.NS", "DATAPATTNS.NS",
+	# Railways / Rail Infra
+	"IRFC.NS", "RVNL.NS", "IRCON.NS", "RAILTEL.NS", "TITAGARH.NS", "BEML.NS",
+	# Renewables / Power Equipment
+	"SUZLON.NS", "INOXWIND.NS", "KPIGREEN.NS", "WAAREEENER.NS", "NTPCGREEN.NS", "PREMIERENE.NS",
+	# Specialty Chemicals
+	"DEEPAKNTR.NS", "NAVINFLUOR.NS", "SRF.NS", "PIIND.NS", "AARTIIND.NS", "CLEAN.NS",
+	# Healthcare / Pharma / Diagnostics
+	"LALPATHLAB.NS", "METROPOLIS.NS", "DRREDDY.NS", "TORNTPHARM.NS", "LAURUSLABS.NS", "KIMS.NS",
+	# Consumer electronics / EMS
+	"DIXON.NS", "KAYNES.NS", "SYRMA.NS", "AMBER.NS", "PGEL.NS", "AVALON.NS",
+	# Mid-cap IT / Digital engineering
+	"PERSISTENT.NS", "COFORGE.NS", "LTIM.NS", "MPHASIS.NS", "CYIENT.NS", "SONATSOFTW.NS",
+]
+
+# Explicitly excluded heavyweight/saturated names for this seed framework.
+MENTAT_EXCLUDED = [
+	# Large-cap IT
+	"TCS.NS", "INFY.NS", "HCLTECH.NS", "WIPRO.NS", "TECHM.NS",
+	# Telecom and oil & gas majors
+	"BHARTIARTL.NS", "RELIANCE.NS", "ONGC.NS", "IOC.NS", "BPCL.NS",
+	# PSU banks (saturated/consensus heavy)
+	"SBIN.NS", "BANKBARODA.NS", "PNB.NS", "CANBK.NS", "UNIONBANK.NS",
+]
+
+# Small/mid benchmark proxies for seed-universe backtests (fallback to NIFTY50 if unavailable).
+MENTAT_BENCHMARKS = ["^NSEMDCP50", "^CNXSMCAP", "^NSEI"]
 LOOKBACK_YEARS = 3
 ROLLING_WINDOW = 60
 N_STATES = 3

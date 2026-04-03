@@ -22,19 +22,32 @@ Core idea:
 Stock Market Analysis/
 ├── pipeline.py
 ├── scheduler.py
+├── app.py
+├── live.py
+├── start_live.py
+├── scanner.py
 ├── requirements.txt
 ├── README.md
 ├── models/
 ├── analysis/
 │   ├── pipeline/
-│   └── mentat_reports/
+│   ├── mentat_reports/
+│   └── validation/
+├── tests/
+│   ├── blind_backtest.py
+│   └── seed_backtest.py
 └── src/
     ├── __init__.py
     ├── config.py
     ├── data_ingestion.py
     ├── hmm_engine.py
     ├── risk_engine.py
-    └── report.py
+    ├── backtest.py
+    ├── brief.py
+    ├── intelligence.py
+    ├── portfolio_risk.py
+    ├── report.py
+    └── universe.py
 ```
 
 ## Install
@@ -74,6 +87,12 @@ python pipeline.py --retrain
 streamlit run app.py
 ```
 
+Live dashboard with scheduler:
+
+```bash
+python start_live.py
+```
+
 The app provides a beginner-first dashboard with:
 
 1. Regime label and confidence
@@ -95,6 +114,20 @@ python scheduler.py
 - Feature matrices: `analysis/pipeline/<TICKER>_feature_matrix.csv`
 - Persisted models: `models/<TICKER>_hmm.pkl`
 - Daily report text: `analysis/mentat_reports/mentat_report_YYYY-MM-DD.txt`
+
+## Backtests (Tests Folder)
+
+Blind walk-forward crucible:
+
+```bash
+python tests/blind_backtest.py
+```
+
+Seed-universe regime backtest:
+
+```bash
+python tests/seed_backtest.py --retrain-days 5
+```
 
 ## Beginner Decision View
 
