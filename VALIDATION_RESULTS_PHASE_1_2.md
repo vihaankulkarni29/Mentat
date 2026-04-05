@@ -93,3 +93,43 @@
 ---
 
 **Mentat Phase 1.2 Status:** ✅ Walk-forward validation working. ✅ Regime labels stable. ⚠ State count may be optimizable. 🎯 Ready for broader NSE expansion.
+
+## Phase 3 VCP Screener Validation (April 2026)
+
+### Objective
+- Validate the new institutional VCP screener on a custom ticker list and verify time-machine behavior over a rolling historical window.
+
+### Test Inputs
+- Universe file used: Stock Screener.csv (17 user-provided symbols)
+- Scanner: outlier_hunter.py
+- Core VCP gates enforced:
+   - Trend: Close > SMA50 > SMA200
+   - Volatility coil: BBW near 120-day minimum
+   - Volume shock: volume > 3x 20-day average
+   - Breakout confirmation: close > open and close > upper Bollinger Band
+
+### Runs Executed
+- Spot run (current date context):
+   - Command style: python outlier_hunter.py --csv "Stock Screener.csv" --symbol-col Symbol
+   - Result: 0 tickers passed all gates
+- Time-machine spot check:
+   - As-of date tested: 2024-03-28
+   - Result: 0 tickers passed all gates
+- Time-machine monthly sweep:
+   - Date range: 2026-03-01 to 2026-04-02 (33 daily runs)
+   - Result: 0 passes across all 33 scans
+   - Daily artifacts generated under analysis/validation as vcp_targets_YYYY-MM-DD.csv
+
+### Data Quality Notes
+- 2 symbols were repeatedly skipped due to insufficient history for full SMA200/BBW windows:
+   - SOLARWORLD.NS
+   - AYE.NS
+- Failed download count remained 0 during monthly sweep.
+
+### Interpretation
+- The 4-gate VCP logic is operating correctly and is currently very selective on this universe/date window.
+- No breakout met all quality constraints simultaneously in the tested period.
+
+### Cleanup Action
+- Raw temporary CSV outputs from manual VCP scans were removed from repository root.
+- Ongoing temporary scanner outputs are now ignored via .gitignore to keep git status clean.

@@ -23,3 +23,8 @@ models/**
 # OS/editor
 .DS_Store
 Thumbs.db
+
+# Local test/scanner artifacts
+Stock Screener.csv
+vcp_targets.csv
+vcp_targets_*.csv
