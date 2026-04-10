@@ -9,6 +9,7 @@ venv/
 # Generated data/artifacts
 analysis/**
 !analysis/.gitkeep
+!analysis/validation_summary.md
 !analysis/pipeline/
 analysis/pipeline/**
 !analysis/pipeline/.gitkeep
